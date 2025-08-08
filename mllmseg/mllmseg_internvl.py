@@ -7,7 +7,7 @@ from transformers.utils import logging
 from internvl.model.internvl_chat.modeling_internvl_chat import InternVLChatModel
 from utils.common import conv
 from utils.losses import dice_loss_plvl, sigmoid_focal_loss, mask_iou
-from mllmseg_internvl.decoder import TransformerDecoder
+from mllmseg.decoder import TransformerDecoder
 
 logger = logging.get_logger(__name__)
 
@@ -164,7 +164,7 @@ class MLLMSeg(InternVLChatModel):
         config,
         tokenizer=None,
         data_type=torch.float16,
-        init_vg=False,
+        init_decoder=False,
     ):
         super().__init__(config)
         self.seg_token_idx = None
@@ -178,10 +178,10 @@ class MLLMSeg(InternVLChatModel):
         # TODO: for debug
         self.tokenizer = tokenizer
         self.data_type = data_type
-        if init_vg:
-            self.init_vg_model()
+        if init_decoder:
+            self.init_mask_decoder()
 
-    def init_vg_model(self):
+    def init_mask_decoder(self):
         self.res_decoder = RESDecoder(txt_dim=self.llm_config.hidden_size).to(dtype=self.data_type)
 
     def forward(

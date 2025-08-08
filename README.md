@@ -1,5 +1,6 @@
 # MLLMSeg: Unlocking the Potential of MLLMs in Referring Expression Segmentation via a Light-weight Mask Decoder
 
+[![arXiv](https://img.shields.io/badge/Arxiv-2508.04107-b31b1b.svg?logo=arXiv)](http://arxiv.org/abs/2508.04107)
 [![Python](https://img.shields.io/badge/Python-3.9-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5.1-red.svg)](https://pytorch.org/)
 [![Transformers](https://img.shields.io/badge/Transformers-4.37.2-green.svg)](https://huggingface.co/docs/transformers/)
@@ -26,10 +27,13 @@
 ### Installation
 
 ```bash
-conda create -n mllmseg python==3.9 -y
+conda create -n mllmseg python==3.10.18 -y
 conda activate mllmseg
-pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
+pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu118
+# If you encounter any problems during the installation of datasets, please install this first.
+# conda install -c conda-forge pyarrow
 pip install -r requirements.txt
+pip install flash-attn==2.3.6 --no-build-isolation # Note: need gpu to install
 ```
 
 ### Data Preparation
@@ -57,31 +61,32 @@ Generalized referring segmentation datasets: [gRefCOCO](https://github.com/hengh
 
 ```bash
 # Train RES
-bash scripts/train_mllmseg_internvl.sh
+bash scripts/train_mllmseg.sh
 
 # Train GRES
-bash scripts/train_mllmseg_internvl_gres.sh
+bash scripts/train_mllmseg_gres.sh
 ```
 
 ### Model Testing
 
 ```bash
 # Test RES
-bash scripts/test_mllmseg_internvl.sh
+bash scripts/test_mllmseg.sh
 
 # Test GRES
-bash scripts/test_mllmseg_internvl_gres.sh
+bash scripts/test_mllmseg_gres.sh
 ```
 
 ### Merge Lora
 
 ```bash
+# When training GRES, you need to first merge the LORA parameters of the RES model.
 python tools/merge_lora_mllmseg.py <input_path> <output_path>
 ```
 
 ## 📦 Checkpoints
 
-Coming soon...
+Our checkpoints are available at [Baidu Netdisk](https://pan.baidu.com/s/1KzEsHkge47jwSRwAOQ98Xw?pwd=8ycs).
 
 ## 📊 Performance Metrics
 
@@ -117,13 +122,13 @@ Email: jcwang@stu.ecnu.edu.cn. Any kind discussions are welcomed!
 ## 📖 Citation
 If our work is useful for your research, please consider cite:
 ```
-@misc{wang2025progressivelanguageguidedvisuallearning,
-      title={Progressive Language-guided Visual Learning for Multi-Task Visual Grounding}, 
-      author={Jingchao Wang and Hong Wang and Wenlong Zhang and Kunhua Ji and Dingjiang Huang and Yefeng Zheng},
+@misc{wang2025unlockingpotentialmllmsreferring,
+      title={Unlocking the Potential of MLLMs in Referring Expression Segmentation via a Light-weight Mask Decoder}, 
+      author={Jingchao Wang and Zhijian Wu and Dingjiang Huang and Yefeng Zheng and Hong Wang},
       year={2025},
-      eprint={2504.16145},
+      eprint={2508.04107},
       archivePrefix={arXiv},
       primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2504.16145}, 
+      url={https://arxiv.org/abs/2508.04107}, 
 }
 ```

@@ -3,26 +3,23 @@ import json
 import os
 import random
 import re
-import sys
 from copy import deepcopy
 from functools import partial
-
-sys.path.append(".")
 import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from mllmseg_internvl.MLLMSeg import MLLMSeg as RESModel
-from mllmseg_internvl.constants import IMG_CONTEXT_TOKEN, IMG_END_TOKEN
-from mllmseg_internvl.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
-from mllmseg_internvl.dataset_vg import ValDataset
+from mllmseg.mllmseg_internvl import MLLMSeg
+from mllmseg.constants import IMG_CONTEXT_TOKEN, IMG_END_TOKEN
+from mllmseg.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
+from mllmseg.dataset_vg import ValDataset
 from utils import AverageMeter, Summary
 
 
 def load_model_and_tokenizer(args):
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint, trust_remote_code=True, use_fast=False)
-    model = RESModel.from_pretrained(
+    model = MLLMSeg.from_pretrained(
         args.checkpoint,
         low_cpu_mem_usage=True,
         torch_dtype=torch.bfloat16,
@@ -30,7 +27,7 @@ def load_model_and_tokenizer(args):
         load_in_4bit=args.load_in_4bit,
         data_type=torch.bfloat16,
         tokenizer=tokenizer,
-        init_vg=True,
+        init_decoder=True,
     ).eval()
     if torch.cuda.is_available():
         model = model.cuda()
@@ -58,26 +55,6 @@ def intersectionAndUnionGPU(pred_masks, gt_masks, K, ignore_index=255):
     area_target = torch.histc(target, bins=K, min=0, max=K - 1)
     area_union = area_output + area_target - area_intersection
     return area_intersection, area_union, area_target
-
-
-def mask_to_bbox(mask):
-    """
-    将mask转换为外接矩形框 [x1, y1, x2, y2]
-    """
-    # 找到mask中非零像素的坐标
-    coords = torch.nonzero(mask > 0.5)
-    if coords.shape[0] == 0:
-        return torch.tensor([0, 0, 0, 0], dtype=torch.float32)
-
-    # 计算边界框 - 修复坐标顺序问题
-    # coords的形状是 [N, 2]，其中第一列是y坐标，第二列是x坐标
-    y_coords = coords[:, 0]
-    x_coords = coords[:, 1]
-
-    y_min, y_max = y_coords.min(), y_coords.max()
-    x_min, x_max = x_coords.min(), x_coords.max()
-
-    return torch.tensor([x_min.item(), y_min.item(), x_max.item(), y_max.item()], dtype=torch.float32)
 
 
 def collate_fn(batch, tokenizer=None, template_name="llava_v1", ds_name="test"):
@@ -257,15 +234,16 @@ def evaluate_gres(args, dataset_name, base_image_dir):
     T_acc = nt_tn_meter.sum / (nt_tn_meter.sum + nt_fp_meter.sum)  # for gt is target, pred is target
     g_iou = g_iou_meter.avg[1]
     c_iou = (inter_meter.sum / (union_meter.sum + 1e-10))[1]
-    log_stats = {"test_model:": args.checkpoint}
-    log_stats["dataset_name"] = dataset_name
-    log_stats["N_acc"] = round(N_acc * 100, 2)
-    log_stats["T_acc"] = round(T_acc * 100, 2)
-    log_stats["g_iou"] = round(g_iou * 100, 2)
-    log_stats["c_iou"] = round(c_iou * 100, 2)
-    print(log_stats)
-    with open(os.path.join(args.checkpoint, "eval_log.txt"), mode="a") as f:
-        f.write(json.dumps(log_stats) + "\n")
+    if torch.distributed.get_rank() == 0:
+        log_stats = {"test_model:": args.checkpoint}
+        log_stats["dataset_name"] = dataset_name
+        log_stats["N_acc"] = round(N_acc * 100, 2)
+        log_stats["T_acc"] = round(T_acc * 100, 2)
+        log_stats["g_iou"] = round(g_iou * 100, 2)
+        log_stats["c_iou"] = round(c_iou * 100, 2)
+        print(log_stats)
+        with open(os.path.join(args.checkpoint, "eval_log.txt"), mode="a") as f:
+            f.write(json.dumps(log_stats) + "\n")
 
 
 if __name__ == "__main__":
@@ -302,14 +280,11 @@ if __name__ == "__main__":
     torch.cuda.set_device(int(os.getenv("LOCAL_RANK", 0)))
 
     PATTERN = re.compile(r"\[*\[(.*?),(.*?),(.*?),(.*?)\]\]*")
-    print("正在加载模型")
     model, tokenizer = load_model_and_tokenizer(args)
 
     image_size = model.config.force_image_size or model.config.vision_config.image_size
     use_thumbnail = model.config.use_thumbnail
     total_params = sum(p.numel() for p in model.parameters()) / 1e9
-    # 计算decoder的参数量
     dec_params = sum(p.numel() for p in model.res_decoder.parameters()) / 1e6
-    print(f"模型信息：模型参数量为 {total_params:.2f}B, decoder参数量为 {dec_params:.2f}M")
     for val_dataset in val_datasets:
         evaluate_gres(args, val_dataset, args.base_image_dir)

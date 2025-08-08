@@ -10,7 +10,7 @@ from PIL import Image
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset as TorchDataset
-from mllmseg_internvl.constants import (
+from mllmseg.constants import (
     ANSWER_LIST,
     DEFAULT_IMAGE_TOKEN,
     IMG_CONTEXT_TOKEN,
@@ -19,8 +19,8 @@ from mllmseg_internvl.constants import (
     LONG_QUESTION_LIST,
     SHORT_QUESTION_LIST,
 )
-from mllmseg_internvl.dataset import build_transform
-from mllmseg_internvl.dataset import (
+from mllmseg.dataset import build_transform
+from mllmseg.dataset import (
     preprocess,
     preprocess_internlm,
     preprocess_internvl2_5,

@@ -1,4 +1,6 @@
 work_dirs*
+checkpoints*
+tmp
 .vscode
 .DS_Store
 .idea

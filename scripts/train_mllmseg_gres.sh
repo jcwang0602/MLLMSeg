@@ -1,40 +1,44 @@
 set -x
 
-GPUS=${GPUS:-4}
-CPUS_PER_TASK=$((GPUS * 16))
-BATCH_SIZE=${BATCH_SIZE:-32}
-PER_DEVICE_BATCH_SIZE=${PER_DEVICE_BATCH_SIZE:-4}
+GPUS=4
+BATCH_SIZE=32 # 16 for internvl2
+PER_DEVICE_BATCH_SIZE=4
 GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
-LORA_RANK=${LORA_RANK:-64}
-MODEL_NAME=${MODEL_NAME:-"OpenGVLab/InternVL2_5-1B"}
-arr=(${MODEL_NAME//\// })
+LORA_RANK=64
+BASE_MODEL="OpenGVLab/InternVL2_5-8B"
+PRETRAINED_MODEL="checkpoints/MLLMSeg_InternVL25_RES"
+arr=(${BASE_MODEL//\// })
+MODEL_NAME=${arr[-1]}
+TOTAL_STEPS=20000
+
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 export MASTER_PORT=$(shuf -i 20000-65000 -n 1)
 export TF_CPP_MIN_LOG_LEVEL=3
 export LAUNCHER=pytorch
 
-OUTPUT_DIR=work_dirs/mllmseg_lora${LORA_RANK}_${arr[1]}_b${BATCH_SIZE}_g${PER_DEVICE_BATCH_SIZE}
+OUTPUT_DIR=work_dirs/mllmseg_${MODEL_NAME}_lora${LORA_RANK}_b${BATCH_SIZE}_g${GPUS}_gres
 
 if [ ! -d "$OUTPUT_DIR" ]; then
   mkdir -p "$OUTPUT_DIR"
 fi
+cp "$0" "$OUTPUT_DIR/"
 
-srun -p mineru4s --gres=gpu:${GPUS} --job-name=train --quotatype=reserved --cpus-per-task=${CPUS_PER_TASK} \
-  torchrun --nnodes=1 --node_rank=0 --master_addr=127.0.0.1 --nproc_per_node=${GPUS} --master_port=${MASTER_PORT} \
-  mllmseg_internvl/finetune_mllmseg.py \
-  --model_name_or_path ${MODEL_NAME} \
+torchrun --nnodes=1 --node_rank=0 --master_addr=127.0.0.1 --nproc_per_node=${GPUS} --master_port=${MASTER_PORT} \
+  mllmseg/finetune_mllmseg.py \
+  --model_name_or_path ${BASE_MODEL} \
+  --pretrained_model ${PRETRAINED_MODEL} \
   --train_dataset "refer_seg" \
-  --refer_seg_data "refclef||refcoco||refcoco+||refcocog" \
+  --refer_seg_data "grefcoco" \
   --output_dir ${OUTPUT_DIR} \
   --overwrite_output_dir True \
   --freeze_llm True \
   --freeze_mlp True \
   --freeze_backbone True \
   --use_llm_lora ${LORA_RANK} \
-  --dataloader_num_workers 8 \
+  --dataloader_num_workers 4 \
   --bf16 True \
   --num_train_epochs 1 \
-  --total_steps 50000 \
+  --total_steps ${TOTAL_STEPS} \
   --ce_loss_weight 1.0 \
   --focal_loss_weight 1.0 \
   --dice_loss_weight 1.0 \
@@ -43,7 +47,7 @@ srun -p mineru4s --gres=gpu:${GPUS} --job-name=train --quotatype=reserved --cpus
   --evaluation_strategy "no" \
   --save_strategy "steps" \
   --save_steps 1000 \
-  --save_total_limit 1 \
+  --save_total_limit 2 \
   --learning_rate 4e-5 \
   --weight_decay 0.05 \
   --warmup_ratio 0.03 \

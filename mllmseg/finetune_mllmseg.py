@@ -12,7 +12,7 @@ import torch.distributed as dist
 import transformers
 from internvl.dist_utils import init_dist
 from internvl.model.internvl_chat.configuration_internvl_chat import InternVLChatConfig
-from mllmseg_internvl.mllmseg import MLLMSeg
+from mllmseg.mllmseg_internvl import MLLMSeg
 from internvl.patch import (
     concat_pad_vgdata_collator,
     replace_internlm2_attention_class,
@@ -23,7 +23,7 @@ from internvl.patch import (
     replace_train_dataloader,
     replace_train_sampler,
 )
-from mllmseg_internvl.constants import (
+from mllmseg.constants import (
     SEG_TOKEN,
     REJ_TOKEN,
     BOX_END_TOKEN,
@@ -36,7 +36,7 @@ from mllmseg_internvl.constants import (
     REF_END_TOKEN,
     REF_START_TOKEN,
 )
-from mllmseg_internvl.dataset_packed import packed_collate_fn
+from mllmseg.dataset_packed import packed_collate_fn
 from PIL import Image, ImageFile, PngImagePlugin
 from transformers import (
     TrainingArguments,
@@ -47,8 +47,8 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils.logging import enable_default_handler, enable_explicit_format, set_verbosity
-from mllmseg_internvl.dataset_vg import build_datasets
-
+from mllmseg.dataset_vg import build_datasets
+from safetensors.torch import safe_open
 
 # Set constants for image processing and logging
 IGNORE_INDEX = -100
@@ -271,7 +271,7 @@ def main():
         data_type=torch.bfloat16,
     )
 
-    model.init_vg_model()
+    model.init_mask_decoder()
     model.img_context_token_id = img_context_token_id
     model.rej_token_idx = tokenizer.convert_tokens_to_ids("[REJ]")
     model.seg_token_idx = tokenizer.convert_tokens_to_ids("[SEG]")

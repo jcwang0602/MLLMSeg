@@ -6,22 +6,22 @@ from typing import Dict
 import glob
 import numpy as np
 from pycocotools import mask
-from mllmseg_internvl.constants import DEFAULT_IMAGE_TOKEN
-from mllmseg_internvl.dataset_sub_reason_seg import ReasonSegDataset
-from mllmseg_internvl.dataset_sub_refer_seg import ReferSegDataset
-from mllmseg_internvl.dataset_sub_sem_seg import SemSegDataset
-from mllmseg_internvl.dataset_sub_vqa import VQADataset
-from mllmseg_internvl.dataset_sub_reason_seg import get_mask_from_json
+from mllmseg.constants import DEFAULT_IMAGE_TOKEN
+from mllmseg.dataset_sub_reason_seg import ReasonSegDataset
+from mllmseg.dataset_sub_refer_seg import ReferSegDataset
+from mllmseg.dataset_sub_sem_seg import SemSegDataset
+from mllmseg.dataset_sub_vqa import VQADataset
+from mllmseg.dataset_sub_reason_seg import get_mask_from_json
 import torch
-from mllmseg_internvl.dataset import ConcatDataset, WeightedConcatDataset
-from mllmseg_internvl.dataset_packed import PackedDataset
+from mllmseg.dataset import ConcatDataset, WeightedConcatDataset
+from mllmseg.dataset_packed import PackedDataset
 from PIL import Image, ImageFile, PngImagePlugin
 from torch.utils.data import Dataset
 
-from mllmseg_internvl.grefer import G_REFER
-from mllmseg_internvl.refer import REFER
-from mllmseg_internvl.refzom import REFZOM_REFER
-from mllmseg_internvl.dataset import build_transform
+from mllmseg.grefer import G_REFER
+from mllmseg.refer import REFER
+from mllmseg.refzom import REFZOM_REFER
+from mllmseg.dataset import build_transform
 
 # Set constants for image processing and logging
 Image.MAX_IMAGE_PIXELS = None

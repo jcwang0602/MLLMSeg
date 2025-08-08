@@ -7,12 +7,12 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset as TorchDataset
 from pycocotools import mask
 from PIL import Image
-from mllmseg_internvl.refzom import REFZOM_REFER
-from mllmseg_internvl.grefer import G_REFER
-from mllmseg_internvl.refer import REFER
-from mllmseg_internvl.constants import ANSWER_LIST_MODE4_START, ANSWER_LIST_MODE4_TEMPLATE, ANSWER_LIST_MODE4_END, IMG_END_TOKEN, SHORT_QUESTION_LIST_MODE4, ANSWER_LIST
-from mllmseg_internvl.dataset import build_transform
-from mllmseg_internvl.dataset import (
+from mllmseg.refzom import REFZOM_REFER
+from mllmseg.grefer import G_REFER
+from mllmseg.refer import REFER
+from mllmseg.constants import ANSWER_LIST_MODE4_START, ANSWER_LIST_MODE4_TEMPLATE, ANSWER_LIST_MODE4_END, IMG_END_TOKEN, SHORT_QUESTION_LIST_MODE4, ANSWER_LIST
+from mllmseg.dataset import build_transform
+from mllmseg.dataset import (
     preprocess,
     preprocess_internlm,
     preprocess_internvl2_5,

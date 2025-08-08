@@ -9,9 +9,9 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset as TorchDataset
 from PIL import Image
 from pycocotools.coco import COCO
-from mllmseg_internvl.constants import ANSWER_LIST, SHORT_QUESTION_LIST_MODE4, ANSWER_LIST_MODE4_START, ANSWER_LIST_MODE4_TEMPLATE, ANSWER_LIST_MODE4_END, IMG_END_TOKEN
-from mllmseg_internvl.dataset import build_transform
-from mllmseg_internvl.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
+from mllmseg.constants import ANSWER_LIST, SHORT_QUESTION_LIST_MODE4, ANSWER_LIST_MODE4_START, ANSWER_LIST_MODE4_TEMPLATE, ANSWER_LIST_MODE4_END, IMG_END_TOKEN
+from mllmseg.dataset import build_transform
+from mllmseg.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
 
 
 def init_mapillary(base_image_dir):

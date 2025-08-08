@@ -4,7 +4,6 @@ import os
 import random
 from copy import deepcopy
 from functools import partial
-
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
@@ -12,10 +11,10 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from mllmseg_internvl.mllmseg import MLLMSeg
-from mllmseg_internvl.constants import IMG_CONTEXT_TOKEN, IMG_END_TOKEN
-from mllmseg_internvl.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
-from mllmseg_internvl.dataset_vg import ValDataset
+from mllmseg.mllmseg_internvl import MLLMSeg
+from mllmseg.constants import IMG_CONTEXT_TOKEN, IMG_END_TOKEN
+from mllmseg.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
+from mllmseg.dataset_vg import ValDataset
 from utils import AverageMeter, Summary
 
 
@@ -29,7 +28,7 @@ def load_model_and_tokenizer(args):
         load_in_4bit=args.load_in_4bit,
         data_type=torch.bfloat16,
         tokenizer=tokenizer,
-        init_vg=True,
+        init_decoder=True,
     ).eval()
     if torch.cuda.is_available():
         model = model.cuda()
@@ -40,69 +39,6 @@ def load_model_and_tokenizer(args):
     model.seg_token_idx = seg_token_idx
     model.rej_token_idx = rej_token_idx
     return model, tokenizer
-
-
-def save_mask_for_debug(image_path_list, output_dict, pred_mask, gt_mask, conversations, idx_mask, output_visualization_dir="visualization_results/vlvcl"):
-    os.makedirs(output_visualization_dir, exist_ok=True)
-    img = cv2.imread(image_path_list[0])
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    image_name = image_path_list[0].split("/")[-1]
-
-    embeds_keys = ["img_vit_embeds", "img_llm_embeds", "img_cross_embeds", "tat_embeds"]
-    intersection, union, _ = intersectionAndUnionGPU(pred_mask.contiguous().clone(), gt_mask.contiguous(), 2, ignore_index=255)
-    iou = (intersection / (union + 1e-5)).cpu().numpy()[1]
-    if iou < 0.9:
-        return
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-    fig.suptitle(f"Mask {idx_mask + 1}, IoU: {iou:.4f}, conversations: {conversations[0]}")
-
-    # Resize image to 448x448
-    img_resized = cv2.resize(img, (448, 448))
-    axes[0, 0].imshow(img_resized)
-    axes[0, 0].set_title("Image")
-    axes[0, 0].axis("off")
-
-    # Plot GT mask
-    gt_mask_np = gt_mask.cpu().numpy()
-    gt_mask_resized = cv2.resize(gt_mask_np, (448, 448), interpolation=cv2.INTER_NEAREST)
-
-    # Create overlay of GT mask on image
-    gt_overlay = img_resized.copy()
-    gt_mask_colored = np.zeros_like(img_resized)
-    gt_mask_colored[gt_mask_resized > 0] = [255, 0, 0]  # Red color for mask
-    gt_overlay = cv2.addWeighted(gt_overlay, 0.7, gt_mask_colored, 0.3, 0)
-
-    axes[0, 1].imshow(gt_overlay)
-    axes[0, 1].set_title("Ground Truth Mask Overlay")
-    axes[0, 1].axis("off")
-
-    # Plot predicted mask
-    pred_mask_np = pred_mask.cpu().numpy() > 0.5
-    pred_mask_resized = cv2.resize(pred_mask_np.astype(np.uint8), (448, 448), interpolation=cv2.INTER_NEAREST)
-
-    # Create overlay of predicted mask on image
-    pred_overlay = img_resized.copy()
-    pred_mask_colored = np.zeros_like(img_resized)
-    pred_mask_colored[pred_mask_resized > 0] = [0, 255, 0]  # Green color for mask
-    pred_overlay = cv2.addWeighted(pred_overlay, 0.7, pred_mask_colored, 0.3, 0)
-
-    axes[0, 2].imshow(pred_overlay)
-    axes[0, 2].set_title("Predicted Mask Overlay")
-    axes[0, 2].axis("off")
-
-    # Plot feature embeddings
-    for idx, key in enumerate(embeds_keys):
-        if key in output_dict:
-            embed = output_dict[key][0][idx_mask].float().cpu()
-            embed = embed.mean(dim=0)
-            axes[1, idx].imshow(embed, cmap="viridis")
-            axes[1, idx].set_title(key)
-            axes[1, idx].axis("off")
-
-    plt.tight_layout()
-    plt.savefig(f"{output_visualization_dir}/{image_name}_mask_{idx_mask + 1}_iou_{iou:.4f}.png")
-    print(f"image saved in {output_visualization_dir}/{image_name}_mask_{idx_mask + 1}_iou_{iou:.4f}.png")
-    plt.close()
 
 
 def intersectionAndUnionGPU(pred_masks, gt_masks, K, ignore_index=255):
@@ -261,7 +197,7 @@ class InferenceSampler(torch.utils.data.sampler.Sampler):
 
 
 @torch.no_grad()
-def evaluate(args, dataset_name, base_image_dir, vis_dir):
+def evaluate(args, dataset_name, base_image_dir):
     random.seed(args.seed)
     dataset = ValDataset(base_image_dir=base_image_dir, tokenizer=tokenizer, val_dataset=dataset_name, image_size=448)
     dataloader = torch.utils.data.DataLoader(
@@ -314,7 +250,6 @@ def evaluate(args, dataset_name, base_image_dir, vis_dir):
         batch_pred_masks = []
         batch_gt_masks = []
         batch_gt_bboxes = []
-        # 遍历每一个mask
         for idx, (mask_i, output_i, bbox_i) in enumerate(zip(gt_masks[0], pred_masks[0], bboxes_list[0])):
             output_i = F.interpolate(output_i.unsqueeze(0).unsqueeze(0).float(), size=mask_i.shape[-2:], mode="bilinear").squeeze(0).squeeze(0)
             batch_pred_masks.append(output_i.contiguous().clone())
@@ -328,8 +263,6 @@ def evaluate(args, dataset_name, base_image_dir, vis_dir):
             union += union_i
             acc_iou += intersection_i / (union_i + 1e-5)
             acc_iou[union_i == 0] += 1.0
-            save_mask_for_debug(image_path_list, output_dict, output_i, mask_i, conversations, idx, vis_dir)
-        # 计算REC任务的边界框IoU成功率
         batch_pred_masks = torch.stack(batch_pred_masks, dim=0)
         batch_gt_masks = torch.stack(batch_gt_masks, dim=0)
         batch_gt_bboxes = torch.tensor(batch_gt_bboxes)
@@ -353,22 +286,21 @@ def evaluate(args, dataset_name, base_image_dir, vis_dir):
     ciou = iou_class[1]
     giou = acc_iou_meter.avg[1]
     rec_accuracy = rec_success_meter.sum / (rec_total_meter.sum)
-
-    log_stats = {"test_model:": args.checkpoint}
-    log_stats["dataset_name"] = dataset_name
-    log_stats["ciou"] = round(ciou.item() * 100, 2)
-    log_stats["giou"] = round(giou.item() * 100, 2)
-    log_stats["rec_bbox_iou_0.5"] = round(rec_accuracy * 100, 2)
-    print(log_stats)
-    with open(os.path.join(args.checkpoint, "eval_log.txt"), mode="a") as f:
-        f.write(json.dumps(log_stats) + "\n")
+    if torch.distributed.get_rank() == 0:
+        log_stats = {"test_model:": args.checkpoint}
+        log_stats["dataset_name"] = dataset_name
+        log_stats["ciou"] = round(ciou.item() * 100, 2)
+        log_stats["giou"] = round(giou.item() * 100, 2)
+        log_stats["rec_bbox_iou_0.5"] = round(rec_accuracy * 100, 2)
+        print(log_stats)
+        with open(os.path.join(args.checkpoint, "eval_log.txt"), mode="a") as f:
+            f.write(json.dumps(log_stats) + "\n")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default="work_dirs/01_pretrain_lora16/checkpoint-44000_merged")
     parser.add_argument("--base_image_dir", type=str, default="/share/wangjingchao/gres_datasets")
-    parser.add_argument("--vis_dir", type=str, default="visualization_results/")
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--num-beams", type=int, default=1)
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -381,13 +313,13 @@ if __name__ == "__main__":
 
     val_datasets = [
         "refcoco|unc|val",
-        # "refcoco|unc|testA",
-        # "refcoco|unc|testB",
-        # "refcoco+|unc|val",
-        # "refcoco+|unc|testA",
-        # "refcoco+|unc|testB",
-        # "refcocog|umd|val",
-        # "refcocog|umd|test",
+        "refcoco|unc|testA",
+        "refcoco|unc|testB",
+        "refcoco+|unc|val",
+        "refcoco+|unc|testA",
+        "refcoco+|unc|testB",
+        "refcocog|umd|val",
+        "refcocog|umd|test",
     ]
 
     torch.distributed.init_process_group(
@@ -398,13 +330,10 @@ if __name__ == "__main__":
 
     torch.cuda.set_device(int(os.getenv("LOCAL_RANK", 0)))
     torch.cuda.empty_cache()
-    print("正在加载模型")
     model, tokenizer = load_model_and_tokenizer(args)
     image_size = model.config.force_image_size or model.config.vision_config.image_size
     use_thumbnail = model.config.use_thumbnail
     total_params = sum(p.numel() for p in model.parameters()) / 1e9
     dec_params = sum(p.numel() for p in model.res_decoder.parameters()) / 1e6
-    print(f"模型信息：模型参数量为 {total_params:.2f}B, decoder参数量为 {dec_params:.2f}M")
     for val_dataset in val_datasets:
-        vis_dir = os.path.join(args.vis_dir, args.checkpoint.split("/")[-1], val_dataset.replace("|", "_"))
-        evaluate(args, val_dataset, args.base_image_dir, vis_dir)
+        evaluate(args, val_dataset, args.base_image_dir)

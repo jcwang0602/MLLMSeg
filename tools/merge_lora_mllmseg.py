@@ -3,7 +3,7 @@ import sys
 
 sys.path.append(".")
 import torch
-from mllmseg_internvl.mllmseg import MLLMSeg
+from mllmseg.mllmseg_internvl import MLLMSeg
 from transformers import AutoTokenizer
 
 argparse = argparse.ArgumentParser()
@@ -12,7 +12,7 @@ argparse.add_argument("output_path", type=str, help="Path to the output model")
 args = argparse.parse_args()
 
 print("Loading model...")
-model = MLLMSeg.from_pretrained(args.input_path, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16).eval()
+model = MLLMSeg.from_pretrained(args.input_path, low_cpu_mem_usage=True, torch_dtype=torch.bfloat16, init_decoder=True).eval()
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(args.input_path, trust_remote_code=True)
 
@@ -26,7 +26,7 @@ if model.config.use_llm_lora:
     model.config.use_llm_lora = 0
 
 print("Saving model...")
-model.save_pretrained(args.output_path)
+model.save_pretrained(args.output_path, safe_serialization=False, max_shard_size="20GB")
 print("Saving tokenizer...")
 tokenizer.save_pretrained(args.output_path)
 print("Done!")
