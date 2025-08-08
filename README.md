@@ -20,7 +20,7 @@
 ## 👀 Todo
 
 - [ ] Release demo of MLLMSeg
-- [ ] Release model checkpoints
+- [x] Release model checkpoints
 
 ## 🚀 Quick Start
 
