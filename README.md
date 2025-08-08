@@ -20,7 +20,7 @@
 ## 👀 Todo
 
 - [ ] Release demo of MLLMSeg
-- [ ] Add web-based demo interface
+- [ ] Release model checkpoints
 
 ## 🚀 Quick Start
 
