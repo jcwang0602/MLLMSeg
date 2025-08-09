@@ -132,3 +132,5 @@ If our work is useful for your research, please consider cite:
       url={https://arxiv.org/abs/2508.04107}, 
 }
 ```
+## ✨ Star History
+[![Star History Chart](https://api.star-history.com/svg?repos=jcwang0602/MLLMSeg&type=Date)](https://star-history.com/#jcwang0602/MLLMSeg&Date)
