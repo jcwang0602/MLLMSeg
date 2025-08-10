@@ -1,5 +1,6 @@
 # MLLMSeg: Unlocking the Potential of MLLMs in Referring Expression Segmentation via a Light-weight Mask Decoder
 
+[![hf_paper](https://img.shields.io/badge/🤗-Paper%20In%20HF-red.svg)](https://huggingface.co/papers/2508.04107)
 [![arXiv](https://img.shields.io/badge/Arxiv-2508.04107-b31b1b.svg?logo=arXiv)](http://arxiv.org/abs/2508.04107)
 [![Python](https://img.shields.io/badge/Python-3.9-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5.1-red.svg)](https://pytorch.org/)
@@ -87,6 +88,10 @@ python tools/merge_lora_mllmseg.py <input_path> <output_path>
 ## 📦 Checkpoints
 
 Our checkpoints are available at [Baidu Netdisk](https://pan.baidu.com/s/1KzEsHkge47jwSRwAOQ98Xw?pwd=8ycs).
+
+You can also download it from HuggingFace:
+[MLLMSeg_InternVL2_5_8B_RES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_8B_RES)
+[MLLMSeg_InternVL2_5_8B_GRES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_8B_GRES)
 
 ## 📊 Performance Metrics
 
