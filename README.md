@@ -90,8 +90,14 @@ python tools/merge_lora_mllmseg.py <input_path> <output_path>
 Our checkpoints are available at [Baidu Netdisk](https://pan.baidu.com/s/1KzEsHkge47jwSRwAOQ98Xw?pwd=8ycs).
 
 You can also download it from HuggingFace:
-[MLLMSeg_InternVL2_5_8B_RES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_8B_RES)
-[MLLMSeg_InternVL2_5_8B_GRES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_8B_GRES)
+| Base Model | RES Model | GRES Model |
+|------|------|------|
+| InternVL2_5_1B | [MLLMSeg_InternVL2_5_1B_RES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_1B_RES) | - |
+| InternVL2_5_2B | [MLLMSeg_InternVL2_5_2B_RES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_2B_RES) | - |
+| InternVL2_5_4B | [MLLMSeg_InternVL2_5_4B_RES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_4B_RES) | - |
+| InternVL2_5_8B | [MLLMSeg_InternVL2_5_8B_RES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_8B_RES) | [MLLMSeg_InternVL2_5_8B_GRES](https://huggingface.co/jcwang0602/MLLMSeg_InternVL2_5_8B_GRES) |
+
+
 
 ## 📊 Performance Metrics
 
