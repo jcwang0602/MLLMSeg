@@ -13,7 +13,6 @@ from torch.utils.data import Dataset as TorchDataset
 from mllmseg.constants import (
     ANSWER_LIST,
     DEFAULT_IMAGE_TOKEN,
-    IMG_CONTEXT_TOKEN,
     IMG_END_TOKEN,
     EXPLANATORY_QUESTION_LIST,
     LONG_QUESTION_LIST,

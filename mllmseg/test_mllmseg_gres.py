@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import os
 import random
@@ -10,11 +11,48 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from mllmseg.mllmseg_internvl import MLLMSeg
+from mllmseg.mllmseg import MLLMSeg
 from mllmseg.constants import IMG_CONTEXT_TOKEN, IMG_END_TOKEN
 from mllmseg.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
 from mllmseg.dataset_vg import ValDataset
 from utils import AverageMeter, Summary
+
+EVAL_SPLITS = [
+    ("grefcoco|unc|val", "val"),
+    ("grefcoco|unc|testA", "testA"),
+    ("grefcoco|unc|testB", "TestB"),
+]
+
+
+def _round2(value):
+    return round(float(value), 2)
+
+
+def save_eval_csv(results, checkpoint, csv_path=None):
+    csv_path = csv_path or os.path.join(checkpoint, "eval_results.csv")
+
+    data_values = []
+    for ds_name, _ in EVAL_SPLITS:
+        metrics = results[ds_name]
+        data_values.extend([
+            _round2(metrics["g_iou"]),
+            _round2(metrics["c_iou"]),
+            _round2(metrics["N_acc"]),
+        ])
+
+    header_group = ["model", "GRES grefcoco"] + [""] * 8
+    header_split = ["", "val", "", "", "testA", "", "", "TestB", "", ""]
+    header_metric = ["model", "gIoU", "cIoU", "N-acc", "gIoU", "cIoU", "N-acc", "gIoU", "cIoU", "N-acc"]
+    data_row = [checkpoint] + data_values
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f, delimiter="\t")
+        writer.writerow(header_group)
+        writer.writerow(header_split)
+        writer.writerow(header_metric)
+        writer.writerow(data_row)
+    print(f"Saved evaluation CSV to {csv_path}")
 
 
 def load_model_and_tokenizer(args):
@@ -234,22 +272,29 @@ def evaluate_gres(args, dataset_name, base_image_dir):
     T_acc = nt_tn_meter.sum / (nt_tn_meter.sum + nt_fp_meter.sum)  # for gt is target, pred is target
     g_iou = g_iou_meter.avg[1]
     c_iou = (inter_meter.sum / (union_meter.sum + 1e-10))[1]
+    metrics = {
+        "N_acc": _round2(N_acc * 100),
+        "T_acc": _round2(T_acc * 100),
+        "g_iou": _round2(float(g_iou) * 100),
+        "c_iou": _round2(float(c_iou) * 100),
+    }
     if torch.distributed.get_rank() == 0:
         log_stats = {"test_model:": args.checkpoint}
         log_stats["dataset_name"] = dataset_name
-        log_stats["N_acc"] = round(N_acc * 100, 2)
-        log_stats["T_acc"] = round(T_acc * 100, 2)
-        log_stats["g_iou"] = round(g_iou * 100, 2)
-        log_stats["c_iou"] = round(c_iou * 100, 2)
+        log_stats["N_acc"] = metrics["N_acc"]
+        log_stats["T_acc"] = metrics["T_acc"]
+        log_stats["g_iou"] = metrics["g_iou"]
+        log_stats["c_iou"] = metrics["c_iou"]
         print(log_stats)
         with open(os.path.join(args.checkpoint, "eval_log.txt"), mode="a") as f:
             f.write(json.dumps(log_stats) + "\n")
+    return metrics
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default="work_dirs/01_pretrain_lora16/checkpoint-44000_merged")
-    parser.add_argument("--base_image_dir", type=str, default="/share/wangjingchao/gres_datasets")
+    parser.add_argument("--base_image_dir", type=str, default="./data")
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--num-beams", type=int, default=1)
@@ -261,15 +306,17 @@ if __name__ == "__main__":
     parser.add_argument("--load-in-8bit", action="store_true")
     parser.add_argument("--load-in-4bit", action="store_true")
     parser.add_argument("--auto", action="store_true")
+    parser.add_argument(
+        "--csv-path",
+        type=str,
+        default=None,
+        help="Path to save evaluation CSV. Defaults to <checkpoint>/eval_results.csv",
+    )
     parser.add_argument("--val_dataset", default="refcoco+|unc|testA", type=str)
     args = parser.parse_args()
 
     assert args.batch_size == 1, "Only batch size 1 is supported"
-    val_datasets = [
-        "grefcoco|unc|val",
-        "grefcoco|unc|testA",
-        "grefcoco|unc|testB",
-    ]
+    val_datasets = [ds_name for ds_name, _ in EVAL_SPLITS]
 
     torch.distributed.init_process_group(
         backend="nccl",
@@ -286,5 +333,11 @@ if __name__ == "__main__":
     use_thumbnail = model.config.use_thumbnail
     total_params = sum(p.numel() for p in model.parameters()) / 1e9
     dec_params = sum(p.numel() for p in model.res_decoder.parameters()) / 1e6
+    eval_results = {}
     for val_dataset in val_datasets:
-        evaluate_gres(args, val_dataset, args.base_image_dir)
+        metrics = evaluate_gres(args, val_dataset, args.base_image_dir)
+        if torch.distributed.get_rank() == 0:
+            eval_results[val_dataset] = metrics
+
+    if torch.distributed.get_rank() == 0:
+        save_eval_csv(eval_results, args.checkpoint, args.csv_path)
