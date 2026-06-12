@@ -1,34 +1,107 @@
 import argparse
+import csv
 import json
 import os
 import random
 from copy import deepcopy
 from functools import partial
-import matplotlib.pyplot as plt
-import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from mllmseg.mllmseg_internvl import MLLMSeg
+from mllmseg.mllmseg import MLLMSeg
 from mllmseg.constants import IMG_CONTEXT_TOKEN, IMG_END_TOKEN
-from mllmseg.dataset import preprocess, preprocess_internlm, preprocess_internvl2_5, preprocess_mpt, preprocess_phi3
+from mllmseg.dataset import (
+    preprocess,
+    preprocess_internlm,
+    preprocess_internvl2_5,
+    preprocess_mpt,
+    preprocess_phi3,
+)
 from mllmseg.dataset_vg import ValDataset
 from utils import AverageMeter, Summary
 
+EVAL_SPLITS = [
+    ("refcoco|unc|val", "refcoco", "val"),
+    ("refcoco|unc|testA", "refcoco", "testA"),
+    ("refcoco|unc|testB", "refcoco", "testB"),
+    ("refcoco+|unc|val", "refcoco+", "val"),
+    ("refcoco+|unc|testA", "refcoco+", "testA"),
+    ("refcoco+|unc|testB", "refcoco+", "testB"),
+    ("refcocog|umd|val", "refcocog", "val-u"),
+    ("refcocog|umd|test", "refcocog", "test-u"),
+]
+
+
+def save_eval_csv(results, checkpoint, csv_path=None):
+    csv_path = csv_path or os.path.join(checkpoint, "eval_results.csv")
+
+    res_ciou = [results[ds_name]["ciou"] for ds_name, _, _ in EVAL_SPLITS]
+    rec_vals = [results[ds_name]["rec"] for ds_name, _, _ in EVAL_SPLITS]
+    res_avg = round(sum(res_ciou) / len(res_ciou), 2)
+    rec_avg = round(sum(rec_vals) / len(rec_vals), 2)
+
+    header_group = ["model", "RES MLLM ciou"] + [""] * 8 + ["REC"] + [""] * 8
+    header_dataset = [
+        "",
+        "Refcoco",
+        "",
+        "",
+        "Refcoco+",
+        "",
+        "",
+        "Refcocog",
+        "",
+        "Avg",
+    ] + ["Refcoco", "", "", "Refcoco+", "", "", "Refcocog", "", "Avg"]
+    header_split = [
+        "model",
+        "val",
+        "testA",
+        "testB",
+        "val",
+        "testA",
+        "testB",
+        "val-u",
+        "test-u",
+        "",
+    ] + [
+        "val",
+        "testA",
+        "testB",
+        "val",
+        "testA",
+        "testB",
+        "val-u",
+        "test-u",
+        "",
+    ]
+    data_row = [checkpoint] + res_ciou + [res_avg] + rec_vals + [rec_avg]
+
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f, delimiter="\t")
+        writer.writerow(header_group)
+        writer.writerow(header_dataset)
+        writer.writerow(header_split)
+        writer.writerow(data_row)
+    print(f"Saved evaluation CSV to {csv_path}")
+
 
 def load_model_and_tokenizer(args):
-    tokenizer = AutoTokenizer.from_pretrained(args.checkpoint, trust_remote_code=True, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.checkpoint, trust_remote_code=True, use_fast=False
+    )
     model = MLLMSeg.from_pretrained(
         args.checkpoint,
         low_cpu_mem_usage=True,
         torch_dtype=torch.bfloat16,
-        load_in_8bit=args.load_in_8bit,
         load_in_4bit=args.load_in_4bit,
         data_type=torch.bfloat16,
         tokenizer=tokenizer,
         init_decoder=True,
+        weights_only=True,
     ).eval()
     if torch.cuda.is_available():
         model = model.cuda()
@@ -47,7 +120,9 @@ def intersectionAndUnionGPU(pred_masks, gt_masks, K, ignore_index=255):
     target = torch.ones(gt_masks.shape)
     target[gt_masks <= 0.0] = 0
     assert output.dim() in [1, 2, 3]
-    assert output.shape == target.shape, f"output_shape = {output.shape}, target_shape = {target.shape}"
+    assert output.shape == target.shape, (
+        f"output_shape = {output.shape}, target_shape = {target.shape}"
+    )
     output = output.reshape(-1)
     target = target.reshape(-1)
     intersection = output[output == target]
@@ -75,7 +150,10 @@ def mask_to_bbox(mask):
     y_min, y_max = y_coords.min(), y_coords.max()
     x_min, x_max = x_coords.min(), x_coords.max()
 
-    return torch.tensor([x_min.item(), y_min.item(), x_max.item(), y_max.item()], dtype=torch.float32)
+    return torch.tensor(
+        [x_min.item(), y_min.item(), x_max.item(), y_max.item()],
+        dtype=torch.float32,
+    )
 
 
 def calculate_bbox_iou(bbox1, bbox2):
@@ -153,7 +231,9 @@ def collate_fn(batch, tokenizer=None, template_name="llava_v1", ds_name="test"):
     )
 
     image_end_token_id = tokenizer.convert_tokens_to_ids(IMG_END_TOKEN)
-    assert (ret["input_ids"][0] == image_end_token_id).sum() == 1, f"image tokens are truncated, this dataset is {ds_name}"
+    assert (ret["input_ids"][0] == image_end_token_id).sum() == 1, (
+        f"image tokens are truncated, this dataset is {ds_name}"
+    )
     # 处理seg mask to_tensor resize
     gt_masks = []
     for gt_mask in masks_list:
@@ -168,7 +248,17 @@ def collate_fn(batch, tokenizer=None, template_name="llava_v1", ds_name="test"):
     pixel_values = torch.concat(pixel_values_list, dim=0)
     image_flags = torch.tensor([1] * 1, dtype=torch.long)
     bboxes_list = torch.from_numpy(np.stack(bboxes_list, axis=0))
-    return input_ids, labels, attention_mask, pixel_values, image_flags, gt_masks, image_path_list, bboxes_list, conversations
+    return (
+        input_ids,
+        labels,
+        attention_mask,
+        pixel_values,
+        image_flags,
+        gt_masks,
+        image_path_list,
+        bboxes_list,
+        conversations,
+    )
 
 
 class InferenceSampler(torch.utils.data.sampler.Sampler):
@@ -177,7 +267,9 @@ class InferenceSampler(torch.utils.data.sampler.Sampler):
         assert size > 0
         self._rank = torch.distributed.get_rank()
         self._world_size = torch.distributed.get_world_size()
-        self._local_indices = self._get_local_indices(size, self._world_size, self._rank)
+        self._local_indices = self._get_local_indices(
+            size, self._world_size, self._rank
+        )
 
     @staticmethod
     def _get_local_indices(total_size, world_size, rank):
@@ -199,7 +291,12 @@ class InferenceSampler(torch.utils.data.sampler.Sampler):
 @torch.no_grad()
 def evaluate(args, dataset_name, base_image_dir):
     random.seed(args.seed)
-    dataset = ValDataset(base_image_dir=base_image_dir, tokenizer=tokenizer, val_dataset=dataset_name, image_size=448)
+    dataset = ValDataset(
+        base_image_dir=base_image_dir,
+        tokenizer=tokenizer,
+        val_dataset=dataset_name,
+        image_size=448,
+    )
     dataloader = torch.utils.data.DataLoader(
         dataset=dataset,
         sampler=InferenceSampler(len(dataset)),
@@ -207,7 +304,9 @@ def evaluate(args, dataset_name, base_image_dir):
         num_workers=1,
         pin_memory=True,
         drop_last=False,
-        collate_fn=partial(collate_fn, tokenizer=tokenizer, template_name="internvl2_5"),
+        collate_fn=partial(
+            collate_fn, tokenizer=tokenizer, template_name="internvl2_5"
+        ),
     )
 
     intersection_meter = AverageMeter("Intersec", ":6.3f", Summary.SUM)
@@ -250,15 +349,30 @@ def evaluate(args, dataset_name, base_image_dir):
         batch_pred_masks = []
         batch_gt_masks = []
         batch_gt_bboxes = []
-        for idx, (mask_i, output_i, bbox_i) in enumerate(zip(gt_masks[0], pred_masks[0], bboxes_list[0])):
-            output_i = F.interpolate(output_i.unsqueeze(0).unsqueeze(0).float(), size=mask_i.shape[-2:], mode="bilinear").squeeze(0).squeeze(0)
+        for idx, (mask_i, output_i, bbox_i) in enumerate(
+            zip(gt_masks[0], pred_masks[0], bboxes_list[0])
+        ):
+            output_i = (
+                F.interpolate(
+                    output_i.unsqueeze(0).unsqueeze(0).float(),
+                    size=mask_i.shape[-2:],
+                    mode="bilinear",
+                )
+                .squeeze(0)
+                .squeeze(0)
+            )
             batch_pred_masks.append(output_i.contiguous().clone())
             batch_gt_masks.append(mask_i.contiguous().clone())
             batch_gt_bboxes.append(bbox_i.tolist())
             pred_masks_list.append(output_i.contiguous().clone())
             gt_masks_list.append(mask_i.contiguous().clone())
 
-            intersection_i, union_i, _ = intersectionAndUnionGPU(output_i.contiguous().clone(), mask_i.contiguous(), 2, ignore_index=255)
+            intersection_i, union_i, _ = intersectionAndUnionGPU(
+                output_i.contiguous().clone(),
+                mask_i.contiguous(),
+                2,
+                ignore_index=255,
+            )
             intersection += intersection_i
             union += union_i
             acc_iou += intersection_i / (union_i + 1e-5)
@@ -266,13 +380,19 @@ def evaluate(args, dataset_name, base_image_dir):
         batch_pred_masks = torch.stack(batch_pred_masks, dim=0)
         batch_gt_masks = torch.stack(batch_gt_masks, dim=0)
         batch_gt_bboxes = torch.tensor(batch_gt_bboxes)
-        rec_success, rec_total = evaluate_rec_bbox_iou(batch_pred_masks, batch_gt_masks, batch_gt_bboxes, iou_threshold=0.5)
+        rec_success, rec_total = evaluate_rec_bbox_iou(
+            batch_pred_masks, batch_gt_masks, batch_gt_bboxes, iou_threshold=0.5
+        )
         rec_success_meter.update(rec_success)
         rec_total_meter.update(rec_total)
 
         intersection, union = intersection.cpu().numpy(), union.cpu().numpy()
         acc_iou = acc_iou.cpu().numpy() / gt_masks.shape[1]
-        intersection_meter.update(intersection), union_meter.update(union), acc_iou_meter.update(acc_iou)
+        (
+            intersection_meter.update(intersection),
+            union_meter.update(union),
+            acc_iou_meter.update(acc_iou),
+        )
 
         total_num += gt_masks.shape[1]
 
@@ -286,21 +406,35 @@ def evaluate(args, dataset_name, base_image_dir):
     ciou = iou_class[1]
     giou = acc_iou_meter.avg[1]
     rec_accuracy = rec_success_meter.sum / (rec_total_meter.sum)
+    metrics = {
+        "ciou": round(ciou.item() * 100, 2),
+        "giou": round(giou.item() * 100, 2),
+        "rec": round(rec_accuracy * 100, 2),
+    }
     if torch.distributed.get_rank() == 0:
         log_stats = {"test_model:": args.checkpoint}
         log_stats["dataset_name"] = dataset_name
-        log_stats["ciou"] = round(ciou.item() * 100, 2)
-        log_stats["giou"] = round(giou.item() * 100, 2)
-        log_stats["rec_bbox_iou_0.5"] = round(rec_accuracy * 100, 2)
+        log_stats["ciou"] = metrics["ciou"]
+        log_stats["giou"] = metrics["giou"]
+        log_stats["rec_bbox_iou_0.5"] = metrics["rec"]
         print(log_stats)
         with open(os.path.join(args.checkpoint, "eval_log.txt"), mode="a") as f:
             f.write(json.dumps(log_stats) + "\n")
+    return metrics
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", type=str, default="work_dirs/01_pretrain_lora16/checkpoint-44000_merged")
-    parser.add_argument("--base_image_dir", type=str, default="/share/wangjingchao/gres_datasets")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="work_dirs/01_pretrain_lora16/checkpoint-44000_merged",
+    )
+    parser.add_argument(
+        "--base_image_dir",
+        type=str,
+        default="./data",
+    )
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--num-beams", type=int, default=1)
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -309,18 +443,15 @@ if __name__ == "__main__":
     parser.add_argument("--load-in-8bit", action="store_true")
     parser.add_argument("--load-in-4bit", action="store_true")
     parser.add_argument("--auto", action="store_true")
+    parser.add_argument(
+        "--csv-path",
+        type=str,
+        default=None,
+        help="Path to save evaluation CSV. Defaults to <checkpoint>/eval_results.csv",
+    )
     args = parser.parse_args()
 
-    val_datasets = [
-        "refcoco|unc|val",
-        "refcoco|unc|testA",
-        "refcoco|unc|testB",
-        "refcoco+|unc|val",
-        "refcoco+|unc|testA",
-        "refcoco+|unc|testB",
-        "refcocog|umd|val",
-        "refcocog|umd|test",
-    ]
+    val_datasets = [ds_name for ds_name, _, _ in EVAL_SPLITS]
 
     torch.distributed.init_process_group(
         backend="nccl",
@@ -331,9 +462,17 @@ if __name__ == "__main__":
     torch.cuda.set_device(int(os.getenv("LOCAL_RANK", 0)))
     torch.cuda.empty_cache()
     model, tokenizer = load_model_and_tokenizer(args)
-    image_size = model.config.force_image_size or model.config.vision_config.image_size
+    image_size = (
+        model.config.force_image_size or model.config.vision_config.image_size
+    )
     use_thumbnail = model.config.use_thumbnail
     total_params = sum(p.numel() for p in model.parameters()) / 1e9
     dec_params = sum(p.numel() for p in model.res_decoder.parameters()) / 1e6
+    eval_results = {}
     for val_dataset in val_datasets:
-        evaluate(args, val_dataset, args.base_image_dir)
+        metrics = evaluate(args, val_dataset, args.base_image_dir)
+        if torch.distributed.get_rank() == 0:
+            eval_results[val_dataset] = metrics
+
+    if torch.distributed.get_rank() == 0:
+        save_eval_csv(eval_results, args.checkpoint, args.csv_path)

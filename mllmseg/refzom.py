@@ -40,7 +40,6 @@ import imageio.v2 as io
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon, Rectangle
-from pprint import pprint
 import numpy as np
 from pycocotools import mask
 

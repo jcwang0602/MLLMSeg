@@ -50,6 +50,13 @@ def _init_dist_pytorch(backend, **kwargs):
     # dist.init_process_group(backend=backend, **kwargs)
     deepspeed.init_distributed(dist_backend=backend)
 
+    # dist.init_process_group(
+    #     backend='nccl',
+    #     init_method='env://',
+    #     world_size=int(os.getenv('WORLD_SIZE', '1')),
+    #     rank=int(os.getenv('RANK', '0')),
+    # )
+
 
 def _init_dist_mpi(backend, **kwargs):
     local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])

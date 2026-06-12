@@ -15,7 +15,14 @@ tmp
 *.pyz
 *.pywz
 *.pyzw
-*.pyc
 *.pth
 *.bin
 **/**.pyc
+data
+models
+
+# Local environment exports and cluster configs
+mllmseg.yaml
+*.conf
+.env
+.env.*
