@@ -8,6 +8,11 @@
 
 <img src="assets/method.png" width="800">
 
+## News
+
+- **2026-10-20:** We released an interactive [Hugging Face Demo](https://huggingface.co/spaces/jcwang0602/MLLMSeg-Demo) for referring expression segmentation. Upload an image or select an example, enter a referring expression, and view the predicted overlay and binary mask online.
+- **2026-10-20:** MLLMSeg has been upgraded to use [InternVL3.5](https://huggingface.co/OpenGVLab) as its multimodal backbone. Training scripts, evaluation scripts, and released checkpoints have been updated accordingly.
+
 ## Overview
 
 MLLMSeg attaches a lightweight mask decoder to InternVL3.5 for referring expression segmentation (RES), referring expression comprehension (REC), and generalized referring expression segmentation (GRES).
