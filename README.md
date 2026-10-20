@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.7.0-red.svg)](https://pytorch.org/)
 [![Transformers](https://img.shields.io/badge/Transformers-4.55.0-green.svg)](https://huggingface.co/docs/transformers/)
+[![Hugging Face Demo](https://img.shields.io/badge/Hugging%20Face-Live%20Demo-yellow?logo=huggingface)](https://huggingface.co/spaces/jcwang0602/MLLMSeg-Demo)
 
 <img src="assets/method.png" width="800">
 
